@@ -6,7 +6,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  MenuItem,
   Stack,
   TextField,
 } from '@mui/material';
@@ -16,7 +15,6 @@ const DEFAULT_FORM = {
   description: '',
   latitude: '',
   longitude: '',
-  trafficLevel: 'moderate',
 };
 
 const isValidCoordinate = (value, min, max) => {
@@ -24,7 +22,7 @@ const isValidCoordinate = (value, min, max) => {
   return !Number.isNaN(number) && number >= min && number <= max;
 };
 
-const AddStopDialog = ({ open, onClose, onSubmit, trafficPresets }) => {
+const AddStopDialog = ({ open, onClose, onSubmit }) => {
   const [form, setForm] = useState(DEFAULT_FORM);
   const [errors, setErrors] = useState({});
 
@@ -65,7 +63,6 @@ const AddStopDialog = ({ open, onClose, onSubmit, trafficPresets }) => {
       name: form.name.trim(),
       description: form.description.trim() || undefined,
       position: [Number(form.latitude), Number(form.longitude)],
-      trafficLevel: form.trafficLevel,
     });
   };
 
@@ -111,19 +108,6 @@ const AddStopDialog = ({ open, onClose, onSubmit, trafficPresets }) => {
               helperText={errors.longitude ?? 'VD: 105.8542'}
             />
           </Box>
-
-          <TextField
-            label="Giao thong gia lap"
-            value={form.trafficLevel}
-            onChange={handleChange('trafficLevel')}
-            select
-          >
-            {Object.entries(trafficPresets).map(([key, value]) => (
-              <MenuItem key={key} value={key}>
-                {value.label}
-              </MenuItem>
-            ))}
-          </TextField>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>

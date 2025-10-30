@@ -1,18 +1,43 @@
-import { Box, Chip, Stack, Typography } from '@mui/material';
+import { Box, Button, Chip, Stack, Typography } from '@mui/material';
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
 import { useEffect, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import RoomIcon from '@mui/icons-material/Room';
+import availableStopPng from '../assets/available-stop-marker.png';
+import routeEndPng from '../assets/route-end-marker.png';
+import routeStartPng from '../assets/route-start-marker.png';
+import routeStopPng from '../assets/route-stop-marker.png';
 import { formatDistance, formatDuration } from '../utils/routeUtils.js';
 
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
+const markerSize = {
+  iconSize: [44, 64],
+  iconAnchor: [22, 64],
+  popupAnchor: [0, -56],
+};
+
+const startMarkerIcon = L.icon({
+  iconUrl: routeStartPng,
+  iconRetinaUrl: routeStartPng,
+  ...markerSize,
+});
+
+const endMarkerIcon = L.icon({
+  iconUrl: routeEndPng,
+  iconRetinaUrl: routeEndPng,
+  ...markerSize,
+});
+
+const routeMarkerIcon = L.icon({
+  iconUrl: routeStopPng,
+  iconRetinaUrl: routeStopPng,
+  ...markerSize,
+});
+
+const availableMarkerIcon = L.icon({
+  iconUrl: availableStopPng,
+  iconRetinaUrl: availableStopPng,
+  ...markerSize,
 });
 
 const FitBounds = ({ points }) => {
@@ -27,52 +52,6 @@ const FitBounds = ({ points }) => {
   return null;
 };
 
-const TrafficLegend = ({ trafficPresets }) => (
-  <Box
-    sx={{
-      position: 'absolute',
-      bottom: 16,
-      right: 16,
-      backgroundColor: 'rgba(255,255,255,0.92)',
-      borderRadius: 2,
-      boxShadow: 3,
-      p: 2,
-      minWidth: 200,
-    }}
-  >
-    <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-      Muc do giao thong
-    </Typography>
-    <Stack spacing={1}>
-      {Object.entries(trafficPresets).map(([key, value]) => (
-        <Stack
-          key={key}
-          direction="row"
-          spacing={1}
-          alignItems="center"
-          justifyContent="space-between"
-        >
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Box
-              sx={{
-                width: 16,
-                height: 16,
-                borderRadius: '4px',
-                backgroundColor: value.color,
-                border: '1px solid rgba(0,0,0,0.1)',
-              }}
-            />
-            <Typography variant="body2">{value.label}</Typography>
-          </Stack>
-          <Typography variant="caption" color="text.secondary">
-            ~ {value.speedKmh} km/h
-          </Typography>
-        </Stack>
-      ))}
-    </Stack>
-  </Box>
-);
-
 const MapView = ({
   base,
   allStops,
@@ -81,9 +60,17 @@ const MapView = ({
   routeStatus,
   routeError,
   routeCoordinates,
-  trafficPresets,
   defaultZoom,
+  onAddStop,
 }) => {
+  const routeStopIdSet = useMemo(
+    () => new Set(routeStops.map((stop) => stop.id)),
+    [routeStops],
+  );
+  const startStopId = routeStops[0]?.id ?? null;
+  const endStopId =
+    routeStops.length > 1 ? routeStops[routeStops.length - 1]?.id ?? null : null;
+
   const boundsPoints = useMemo(() => {
     if (routeCoordinates.length) {
       return routeCoordinates;
@@ -107,25 +94,69 @@ const MapView = ({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {allStops.map((stop) => (
-          <Marker position={stop.position} key={stop.id}>
-            <Popup>
-              <Stack spacing={0.5}>
-                <Typography variant="subtitle2" fontWeight={600}>
-                  {stop.name}
-                </Typography>
-                {stop.description && (
-                  <Typography variant="body2" color="text.secondary">
-                    {stop.description}
-                  </Typography>
-                )}
-                <Typography variant="caption" color="text.secondary">
-                  {stop.position[0].toFixed(5)}, {stop.position[1].toFixed(5)}
-                </Typography>
-              </Stack>
-            </Popup>
-          </Marker>
-        ))}
+        {allStops.map((stop) => {
+          const isStopInRoute = routeStopIdSet.has(stop.id);
+          const isStartStop = startStopId === stop.id;
+          const isEndStop = endStopId === stop.id && !isStartStop;
+
+          let markerIcon = availableMarkerIcon;
+          if (isStartStop) {
+            markerIcon = startMarkerIcon;
+          } else if (isEndStop) {
+            markerIcon = endMarkerIcon;
+          } else if (isStopInRoute) {
+            markerIcon = routeMarkerIcon;
+          }
+
+          let actionLabel = 'Them vao lo trinh';
+          let actionDisabled = false;
+
+          if (isStartStop) {
+            actionLabel = 'Dang la diem bat dau';
+            actionDisabled = true;
+          } else if (isEndStop) {
+            actionLabel = 'Dang la diem ket thuc';
+            actionDisabled = true;
+          } else if (isStopInRoute) {
+            actionLabel = 'Da nam trong lo trinh';
+            actionDisabled = true;
+          }
+
+          return (
+            <Marker position={stop.position} key={stop.id} icon={markerIcon}>
+              <Popup>
+                <Stack spacing={1}>
+                  <Stack spacing={0.5}>
+                    <Typography variant="subtitle2" fontWeight={600}>
+                      {stop.name}
+                    </Typography>
+                    {stop.description && (
+                      <Typography variant="body2" color="text.secondary">
+                        {stop.description}
+                      </Typography>
+                    )}
+                    <Typography variant="caption" color="text.secondary">
+                      {stop.position[0].toFixed(5)}, {stop.position[1].toFixed(5)}
+                    </Typography>
+                  </Stack>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    disabled={actionDisabled}
+                    onClick={() => {
+                      if (!actionDisabled && onAddStop) {
+                        onAddStop(stop.id);
+                      }
+                    }}
+                    fullWidth
+                  >
+                    {actionLabel}
+                  </Button>
+                </Stack>
+              </Popup>
+            </Marker>
+          );
+        })}
 
         <Marker
           position={base.position}
@@ -245,8 +276,6 @@ const MapView = ({
           )}
         </Stack>
       </Box>
-
-      <TrafficLegend trafficPresets={trafficPresets} />
 
       <style>{`
         .base-marker-icon #base-pin {

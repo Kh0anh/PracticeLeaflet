@@ -19,7 +19,6 @@ import AddIcon from '@mui/icons-material/Add';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import DeleteIcon from '@mui/icons-material/Delete';
-import RefreshIcon from '@mui/icons-material/Refresh';
 import RouteIcon from '@mui/icons-material/Route';
 import { formatDistance, formatDuration } from '../utils/routeUtils.js';
 
@@ -89,51 +88,36 @@ const StopListItem = ({
   </ListItem>
 );
 
-const SegmentList = ({ segments, trafficPresets }) => (
+const SegmentList = ({ segments }) => (
   <List dense disablePadding>
-    {segments.map((segment) => {
-      const traffic = trafficPresets[segment.trafficLevel];
-      return (
-        <ListItem key={segment.id} divider>
-          <ListItemText
-            primary={
-              <Stack direction="row" spacing={1} alignItems="center">
-                <RouteIcon fontSize="small" sx={{ color: segment.color }} />
-                <Typography variant="body2">
-                  {`${segment.from.name} -> ${segment.to.name}`}
-                </Typography>
-              </Stack>
-            }
-            secondary={
-              <Stack
-                direction="row"
-                spacing={1.5}
-                divider={<Divider flexItem orientation="vertical" />}
-              >
-                <Typography variant="caption">
-                  Quang duong: {formatDistance(segment.distanceKm)}
-                </Typography>
-                <Typography variant="caption">
-                  Thoi gian: {formatDuration(segment.durationMinutes)}
-                </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    color: segment.color,
-                    fontWeight: 500,
-                  }}
-                >
-                  - {traffic?.label ?? 'Dang cap nhat'}
-                </Typography>
-              </Stack>
-            }
-          />
-        </ListItem>
-      );
-    })}
+    {segments.map((segment) => (
+      <ListItem key={segment.id} divider>
+        <ListItemText
+          primary={
+            <Stack direction="row" spacing={1} alignItems="center">
+              <RouteIcon fontSize="small" sx={{ color: segment.color }} />
+              <Typography variant="body2">
+                {`${segment.from.name} -> ${segment.to.name}`}
+              </Typography>
+            </Stack>
+          }
+          secondary={
+            <Stack
+              direction="row"
+              spacing={1.5}
+              divider={<Divider flexItem orientation="vertical" />}
+            >
+              <Typography variant="caption">
+                Quang duong: {formatDistance(segment.distanceKm)}
+              </Typography>
+              <Typography variant="caption">
+                Thoi gian: {formatDuration(segment.durationMinutes)}
+              </Typography>
+            </Stack>
+          }
+        />
+      </ListItem>
+    ))}
   </List>
 );
 
@@ -142,14 +126,12 @@ const Sidebar = ({
   availableStops,
   segments,
   totals,
-  trafficPresets,
   routeStatus,
   routeError,
   onAddStop,
   onRemoveStop,
   onMoveStop,
   onOpenAddDialog,
-  onRefreshTraffic,
 }) => {
   const [selectedStop, setSelectedStop] = useState(null);
 
@@ -255,18 +237,6 @@ const Sidebar = ({
             </Tooltip>
           </Stack>
 
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant="outlined"
-              size="small"
-              fullWidth
-              onClick={onRefreshTraffic}
-              startIcon={<RefreshIcon />}
-            >
-              Cap nhat giao thong
-            </Button>
-          </Stack>
-
           <Box>
             <Typography variant="subtitle2" color="text.secondary" mb={1}>
               Danh sach diem dung
@@ -299,7 +269,7 @@ const Sidebar = ({
               <Typography variant="subtitle2" color="text.secondary" mb={1}>
                 Chi tiet tung chang
               </Typography>
-              <SegmentList segments={segments} trafficPresets={trafficPresets} />
+              <SegmentList segments={segments} />
             </Box>
           )}
         </Stack>

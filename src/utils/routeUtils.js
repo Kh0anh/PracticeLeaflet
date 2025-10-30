@@ -1,5 +1,6 @@
 const EARTH_RADIUS_KM = 6371;
 const DEFAULT_SPEED_KMH = 45;
+const DEFAULT_SEGMENT_COLOR = '#1976d2';
 
 const toRadians = (deg) => (deg * Math.PI) / 180;
 
@@ -34,17 +35,6 @@ export const formatDuration = (minutes) => {
   return mins === 0 ? `${hours} gio` : `${hours} gio ${mins} phut`;
 };
 
-export const getSegmentKey = (fromId, toId) =>
-  [fromId, toId].sort().join('__');
-
-export const buildInitialTrafficMap = (roadNetwork = []) => {
-  const traffic = {};
-  roadNetwork.forEach(({ from, to, traffic: level }) => {
-    traffic[getSegmentKey(from, to)] = level;
-  });
-  return traffic;
-};
-
 const convertGeoJsonCoords = (coords = []) =>
   coords.map(([lon, lat]) => [lat, lon]);
 
@@ -75,34 +65,17 @@ const deriveSegmentGeometry = (leg, fallbackGeometry) => {
   return fallbackGeometry;
 };
 
-const baseSegmentData = ({
+const baseSegmentData = ({ from, to, fromId, toId }) => ({
+  id: `${fromId}-${toId}`,
   from,
   to,
-  trafficMap,
-  trafficPresets,
-  fromId,
-  toId,
-}) => {
-  const trafficLevel = trafficMap[getSegmentKey(fromId, toId)] ?? 'moderate';
-  const trafficInfo = trafficPresets[trafficLevel];
-
-  return {
-    id: `${fromId}-${toId}`,
-    from,
-    to,
-    trafficLevel,
-    color: trafficInfo?.color ?? '#1976d2',
-    label: trafficInfo?.label ?? 'Dang cap nhat',
-    speedKmh: trafficInfo?.speedKmh ?? DEFAULT_SPEED_KMH,
-  };
-};
+  color: DEFAULT_SEGMENT_COLOR,
+});
 
 export const buildSegmentsFromLegs = ({
   legs = [],
   routeStopIds,
   stopById,
-  trafficMap,
-  trafficPresets,
 }) => {
   if (!Array.isArray(routeStopIds) || routeStopIds.length < 2) return [];
 
@@ -118,7 +91,7 @@ export const buildSegmentsFromLegs = ({
       : (distanceKm / DEFAULT_SPEED_KMH) * 60;
 
     return {
-      ...baseSegmentData({ from, to, trafficMap, trafficPresets, fromId, toId }),
+      ...baseSegmentData({ from, to, fromId, toId }),
       distanceKm,
       durationMinutes,
       geometry: deriveSegmentGeometry(leg, [from.position, to.position]),
@@ -129,8 +102,6 @@ export const buildSegmentsFromLegs = ({
 export const buildFallbackSegments = ({
   routeStopIds,
   stopById,
-  trafficMap,
-  trafficPresets,
 }) => {
   if (!Array.isArray(routeStopIds) || routeStopIds.length < 2) return [];
 
@@ -143,7 +114,7 @@ export const buildFallbackSegments = ({
     const durationMinutes = (distanceKm / DEFAULT_SPEED_KMH) * 60;
 
     return {
-      ...baseSegmentData({ from, to, trafficMap, trafficPresets, fromId, toId }),
+      ...baseSegmentData({ from, to, fromId, toId }),
       distanceKm,
       durationMinutes,
       geometry: [from.position, to.position],
@@ -159,37 +130,6 @@ export const getRouteTotals = (segments) =>
     }),
     { distanceKm: 0, durationMinutes: 0 },
   );
-
-const TRAFFIC_SEQUENCE = ['light', 'moderate', 'heavy'];
-
-const moveTrafficLevel = (current, direction) => {
-  const idx = TRAFFIC_SEQUENCE.indexOf(current);
-  if (idx === -1) return current;
-  const nextIndex = Math.min(
-    TRAFFIC_SEQUENCE.length - 1,
-    Math.max(0, idx + direction),
-  );
-  return TRAFFIC_SEQUENCE[nextIndex];
-};
-
-export const randomizeTraffic = (trafficMap) => {
-  const entries = Object.entries(trafficMap);
-  if (!entries.length) return trafficMap;
-
-  const updated = { ...trafficMap };
-
-  entries.forEach(([key, level]) => {
-    const roll = Math.random();
-
-    if (roll < 0.2) {
-      updated[key] = moveTrafficLevel(level, -1);
-    } else if (roll > 0.8) {
-      updated[key] = moveTrafficLevel(level, 1);
-    }
-  });
-
-  return updated;
-};
 
 export const convertRouteCoordinates = (route) =>
   convertGeoJsonCoords(route?.geometry?.coordinates ?? []);

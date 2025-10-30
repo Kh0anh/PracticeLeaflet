@@ -13,12 +13,9 @@ import AddStopDialog from './components/AddStopDialog.jsx';
 import { MAP_CONFIG } from './config/mapConfig.js';
 import {
   buildFallbackSegments,
-  buildInitialTrafficMap,
   buildSegmentsFromLegs,
   convertRouteCoordinates,
   getRouteTotals,
-  getSegmentKey,
-  randomizeTraffic,
 } from './utils/routeUtils.js';
 import './App.css';
 
@@ -40,17 +37,6 @@ const theme = createTheme({
   },
 });
 
-const ensureTrafficForStop = (trafficMap, stopId, existingIds, level) => {
-  const next = { ...trafficMap };
-  existingIds.forEach((id) => {
-    const key = getSegmentKey(id, stopId);
-    if (!next[key]) {
-      next[key] = level ?? 'moderate';
-    }
-  });
-  return next;
-};
-
 const ROUTE_RESET = {
   status: 'idle',
   coordinates: [],
@@ -61,7 +47,7 @@ const ROUTE_RESET = {
 };
 
 function App() {
-  const { base, stops, defaultZoom, trafficPresets, roadNetwork } = MAP_CONFIG;
+  const { base, stops, defaultZoom } = MAP_CONFIG;
 
   const initialRoute = useMemo(
     () => stops.slice(0, 2).map((stop) => stop.id),
@@ -70,9 +56,6 @@ function App() {
 
   const [routeStopIds, setRouteStopIds] = useState(initialRoute);
   const [customStops, setCustomStops] = useState([]);
-  const [trafficMap, setTrafficMap] = useState(() =>
-    buildInitialTrafficMap(roadNetwork),
-  );
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [snackbar, setSnackbar] = useState(null);
   const [routeDetails, setRouteDetails] = useState(ROUTE_RESET);
@@ -152,26 +135,6 @@ function App() {
     return () => controller.abort();
   }, [routeStopIds, stopById]);
 
-  useEffect(() => {
-    if (routeStopIds.length < 2) return;
-    setTrafficMap((prev) => {
-      let next = prev;
-      let changed = false;
-      routeStopIds.slice(0, -1).forEach((fromId, index) => {
-        const toId = routeStopIds[index + 1];
-        const key = getSegmentKey(fromId, toId);
-        if (!next[key]) {
-          if (!changed) {
-            next = { ...prev };
-          }
-          next[key] = 'moderate';
-          changed = true;
-        }
-      });
-      return changed ? next : prev;
-    });
-  }, [routeStopIds]);
-
   const routeStops = useMemo(
     () => routeStopIds.map((id) => stopById[id]).filter(Boolean),
     [routeStopIds, stopById],
@@ -191,24 +154,14 @@ function App() {
         legs: routeDetails.legs,
         routeStopIds,
         stopById,
-        trafficMap,
-        trafficPresets,
       });
     }
 
     return buildFallbackSegments({
       routeStopIds,
       stopById,
-      trafficMap,
-      trafficPresets,
     });
-  }, [
-    routeDetails,
-    routeStopIds,
-    stopById,
-    trafficMap,
-    trafficPresets,
-  ]);
+  }, [routeDetails, routeStopIds, stopById]);
 
   const totals = useMemo(() => {
     if (routeDetails.status === 'success') {
@@ -249,19 +202,8 @@ function App() {
 
     setCustomStops((prev) => [...prev, newStop]);
     setRouteStopIds((prev) => [...prev, newStopId]);
-    setTrafficMap((prev) =>
-      ensureTrafficForStop(prev, newStopId, routeStopIds, payload.trafficLevel),
-    );
     setIsAddDialogOpen(false);
     setSnackbar({ message: 'Da tao diem dung moi', severity: 'success' });
-  };
-
-  const handleRefreshTraffic = () => {
-    setTrafficMap((prev) => randomizeTraffic(prev));
-    setSnackbar({
-      message: 'Da cap nhat du lieu giao thong',
-      severity: 'info',
-    });
   };
 
   return (
@@ -282,14 +224,12 @@ function App() {
           availableStops={availableStops}
           segments={segments}
           totals={totals}
-          trafficPresets={trafficPresets}
           routeStatus={routeDetails.status}
           routeError={routeDetails.error}
           onAddStop={handleAddStop}
           onRemoveStop={handleRemoveStop}
           onMoveStop={handleMoveStop}
           onOpenAddDialog={() => setIsAddDialogOpen(true)}
-          onRefreshTraffic={handleRefreshTraffic}
         />
 
         <MapView
@@ -300,8 +240,8 @@ function App() {
           routeStatus={routeDetails.status}
           routeError={routeDetails.error}
           routeCoordinates={routeDetails.coordinates}
-          trafficPresets={trafficPresets}
           defaultZoom={defaultZoom}
+          onAddStop={handleAddStop}
         />
       </Box>
 
@@ -309,7 +249,6 @@ function App() {
         open={isAddDialogOpen}
         onClose={() => setIsAddDialogOpen(false)}
         onSubmit={handleCreateCustomStop}
-        trafficPresets={trafficPresets}
       />
 
       <Snackbar
