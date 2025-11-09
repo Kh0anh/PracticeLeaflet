@@ -5,7 +5,7 @@ export const MAP_CONFIG = {
     description: 'Diem tham chieu khi mo ban do',
     position: [10.039128, 105.769949],
   },
-  defaultZoom: 13,
+  defaultZoom: 16,
   stops: [
     {
       id: 'store-a',

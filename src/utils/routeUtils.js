@@ -1,6 +1,7 @@
 const EARTH_RADIUS_KM = 6371;
 const DEFAULT_SPEED_KMH = 45;
 const DEFAULT_SEGMENT_COLOR = '#1976d2';
+const DEFAULT_ROAD_NAME = 'duong khong ten';
 
 const toRadians = (deg) => (deg * Math.PI) / 180;
 
@@ -38,6 +39,91 @@ export const formatDuration = (minutes) => {
 const convertGeoJsonCoords = (coords = []) =>
   coords.map(([lon, lat]) => [lat, lon]);
 
+const normalizeModifierKey = (modifier = '') =>
+  `${modifier ?? ''}`.toLowerCase().replace(/\s+/g, '_');
+
+const modifierTextMap = {
+  left: 'trai',
+  right: 'phai',
+  straight: 'thang',
+  slight_left: 'cheo trai',
+  slight_right: 'cheo phai',
+  sharp_left: 'goc trai',
+  sharp_right: 'goc phai',
+  uturn: 'quay dau',
+};
+
+const getModifierText = (modifier) => {
+  if (!modifier) return null;
+  const key = normalizeModifierKey(modifier);
+  return modifierTextMap[key] ?? modifier;
+};
+
+const formatRoadName = (name) =>
+  name && name.trim().length ? name.trim() : DEFAULT_ROAD_NAME;
+
+const formatStepDistanceLabel = (distanceMeters) => {
+  if (typeof distanceMeters !== 'number' || distanceMeters <= 0) return null;
+  return formatDistance(distanceMeters / 1000);
+};
+
+const buildStepDescription = (step = {}, { fromName, toName } = {}) => {
+  const { maneuver = {}, name } = step;
+  if (maneuver.instruction) return maneuver.instruction;
+
+  const roadName = formatRoadName(name);
+  const type = (maneuver.type || '').toLowerCase();
+  const normalizedModifier = normalizeModifierKey(maneuver.modifier ?? '');
+  const modifierText = getModifierText(maneuver.modifier);
+
+  switch (type) {
+    case 'depart': {
+      const origin = fromName ?? 'diem bat dau';
+      return `Roi ${origin} va di tren ${roadName}`;
+    }
+    case 'arrive': {
+      const destination = toName ?? 'diem den';
+      return `Den ${destination}`;
+    }
+    case 'roundabout': {
+      const exitText = maneuver.exit ? `, ra o cua thu ${maneuver.exit}` : '';
+      return `Vao vong xoay${exitText} de vao ${roadName}`;
+    }
+    case 'fork':
+      return modifierText
+        ? `Tai nga ba, giu ben ${modifierText} de vao ${roadName}`
+        : `Tai nga ba, di theo ${roadName}`;
+    case 'merge':
+      return modifierText
+        ? `Nhap lan ve ben ${modifierText} de vao ${roadName}`
+        : `Nhap lan de vao ${roadName}`;
+    case 'end_of_road':
+    case 'end of road':
+      return modifierText
+        ? `Cuoi duong, re ${modifierText} vao ${roadName}`
+        : `Cuoi duong, di vao ${roadName}`;
+    case 'turn':
+      if (normalizedModifier === 'uturn') {
+        return `Quay dau de vao ${roadName}`;
+      }
+      if (modifierText && modifierText !== 'thang') {
+        return `Re ${modifierText} vao ${roadName}`;
+      }
+      return `Re vao ${roadName}`;
+    case 'continue':
+      if (modifierText && modifierText !== 'thang') {
+        return `Tiep tuc ${modifierText} tren ${roadName}`;
+      }
+      return `Tiep tuc tren ${roadName}`;
+    default: {
+      if (modifierText && modifierText !== 'thang') {
+        return `Di theo huong ${modifierText} tren ${roadName}`;
+      }
+      return `Di tren ${roadName}`;
+    }
+  }
+};
+
 const mergeStepsGeometry = (steps = []) => {
   const merged = [];
   steps.forEach((step, index) => {
@@ -72,6 +158,19 @@ const baseSegmentData = ({ from, to, fromId, toId }) => ({
   color: DEFAULT_SEGMENT_COLOR,
 });
 
+const buildLegInstructions = ({ leg, from, to, fromId, toId }) => {
+  if (!leg?.steps?.length) return [];
+
+  return leg.steps.map((step, index) => ({
+    id: `${fromId}-${toId}-instruction-${index}`,
+    text: buildStepDescription(step, {
+      fromName: from?.name,
+      toName: to?.name,
+    }),
+    distanceLabel: formatStepDistanceLabel(step.distance),
+  }));
+};
+
 export const buildSegmentsFromLegs = ({
   legs = [],
   routeStopIds,
@@ -90,11 +189,20 @@ export const buildSegmentsFromLegs = ({
       ? leg.duration / 60
       : (distanceKm / DEFAULT_SPEED_KMH) * 60;
 
+    const instructions = buildLegInstructions({
+      leg,
+      from,
+      to,
+      fromId,
+      toId,
+    });
+
     return {
       ...baseSegmentData({ from, to, fromId, toId }),
       distanceKm,
       durationMinutes,
       geometry: deriveSegmentGeometry(leg, [from.position, to.position]),
+      instructions,
     };
   });
 };
@@ -118,6 +226,7 @@ export const buildFallbackSegments = ({
       distanceKm,
       durationMinutes,
       geometry: [from.position, to.position],
+      instructions: [],
     };
   });
 };

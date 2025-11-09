@@ -1,14 +1,27 @@
-import { Box, Button, Chip, Stack, Typography } from '@mui/material';
-import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
-import { useEffect, useMemo } from 'react';
+import { Box, Button, Chip, IconButton, Stack, Typography } from '@mui/material';
+import {
+  MapContainer,
+  Marker,
+  Polyline,
+  Popup,
+  TileLayer,
+  useMap,
+  useMapEvents,
+} from 'react-leaflet';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import RoomIcon from '@mui/icons-material/Room';
+import CloseIcon from '@mui/icons-material/Close';
 import availableStopPng from '../assets/available-stop-marker.png';
 import routeEndPng from '../assets/route-end-marker.png';
 import routeStartPng from '../assets/route-start-marker.png';
 import routeStopPng from '../assets/route-stop-marker.png';
-import { formatDistance, formatDuration } from '../utils/routeUtils.js';
+import {
+  formatDistance,
+  formatDuration,
+  haversineDistance,
+} from '../utils/routeUtils.js';
 
 const markerSize = {
   iconSize: [44, 64],
@@ -44,10 +57,25 @@ const FitBounds = ({ points }) => {
   const map = useMap();
 
   useEffect(() => {
-    if (!points.length) return;
+    if (points.length < 2) return;
+    const uniquePoints = new Set(points.map((point) => point.join(',')));
+    if (uniquePoints.size < 2) return;
     const bounds = L.latLngBounds(points);
     map.fitBounds(bounds, { padding: [40, 40] });
   }, [points, map]);
+
+  return null;
+};
+
+const MapClickHandler = ({ onMapClick }) => {
+  useMapEvents({
+    click(event) {
+      if (!onMapClick) return;
+      const target = event.originalEvent?.target;
+      if (target?.closest('.leaflet-interactive')) return;
+      onMapClick(event);
+    },
+  });
 
   return null;
 };
@@ -62,6 +90,9 @@ const MapView = ({
   routeCoordinates,
   defaultZoom,
   onAddStop,
+  onAddCoordinateStop,
+  onCreateStoreAtPoint,
+  onBuildNearestRoute,
 }) => {
   const routeStopIdSet = useMemo(
     () => new Set(routeStops.map((stop) => stop.id)),
@@ -80,6 +111,84 @@ const MapView = ({
     }
     return [base.position];
   }, [routeCoordinates, routeStops, base.position]);
+
+  const [mapContextInfo, setMapContextInfo] = useState(null);
+
+  const handleMapClick = useCallback(
+    (event) => {
+      if (!event?.latlng) return;
+      const clickPosition = [event.latlng.lat, event.latlng.lng];
+      let nearest = null;
+
+      allStops.forEach((stop) => {
+        if (!stop || stop.ephemeral || !stop.position) return;
+        const distanceKm = haversineDistance(clickPosition, stop.position);
+        if (!Number.isFinite(distanceKm)) return;
+        if (!nearest || distanceKm < nearest.distanceKm) {
+          nearest = { stop, distanceKm };
+        }
+      });
+
+      setMapContextInfo({
+        latlng: event.latlng,
+        position: {
+          x: event.containerPoint?.x ?? 0,
+          y: event.containerPoint?.y ?? 0,
+        },
+        nearest,
+        showNearest: false,
+      });
+    },
+    [allStops],
+  );
+
+  const handleCloseContext = useCallback(() => {
+    setMapContextInfo(null);
+  }, []);
+
+  useEffect(() => {
+    if (!mapContextInfo) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setMapContextInfo(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [mapContextInfo]);
+
+  const handleNearestRoute = useCallback(() => {
+    if (
+      !mapContextInfo ||
+      !mapContextInfo.nearest ||
+      !mapContextInfo.nearest.stop?.id ||
+      !onBuildNearestRoute
+    ) {
+      return;
+    }
+    const { latlng, nearest } = mapContextInfo;
+    onBuildNearestRoute([latlng.lat, latlng.lng], nearest.stop.id);
+    setMapContextInfo(null);
+  }, [mapContextInfo, onBuildNearestRoute]);
+
+  const handleQuickAddStop = useCallback(() => {
+    if (!mapContextInfo || !onAddCoordinateStop) return;
+    const { latlng } = mapContextInfo;
+    onAddCoordinateStop([latlng.lat, latlng.lng]);
+    setMapContextInfo(null);
+  }, [mapContextInfo, onAddCoordinateStop]);
+
+  const handleCreateStore = useCallback(() => {
+    if (!mapContextInfo || !onCreateStoreAtPoint) return;
+    const { latlng } = mapContextInfo;
+    onCreateStoreAtPoint([latlng.lat, latlng.lng]);
+    setMapContextInfo(null);
+  }, [mapContextInfo, onCreateStoreAtPoint]);
+
+  const coordinateLabel = useMemo(() => {
+    if (!mapContextInfo) return '';
+    return `${mapContextInfo.latlng.lat.toFixed(5)}, ${mapContextInfo.latlng.lng.toFixed(5)}`;
+  }, [mapContextInfo]);
 
   return (
     <Box component="section" sx={{ position: 'relative', flex: 1 }}>
@@ -158,30 +267,6 @@ const MapView = ({
           );
         })}
 
-        <Marker
-          position={base.position}
-          icon={L.divIcon({
-            className: 'base-marker-icon',
-            html: `<div id="base-pin"></div>`,
-            iconSize: [32, 32],
-            iconAnchor: [16, 32],
-            popupAnchor: [0, -28],
-          })}
-        >
-          <Popup>
-            <Stack spacing={0.5}>
-              <Typography variant="subtitle2" fontWeight={700}>
-                {base.name}
-              </Typography>
-              {base.description && (
-                <Typography variant="body2" color="text.secondary">
-                  {base.description}
-                </Typography>
-              )}
-            </Stack>
-          </Popup>
-        </Marker>
-
         {segments.map((segment) => (
           <Polyline
             key={segment.id}
@@ -205,8 +290,90 @@ const MapView = ({
           />
         )}
 
+        <MapClickHandler onMapClick={handleMapClick} />
         <FitBounds points={boundsPoints} />
       </MapContainer>
+
+      {mapContextInfo && (
+        <Box
+          sx={{
+            position: 'absolute',
+            transform: 'translate(-50%, -110%)',
+            backgroundColor: 'background.paper',
+            borderRadius: 2,
+            boxShadow: 4,
+            p: 2,
+            minWidth: 280,
+            maxWidth: 320,
+            zIndex: (theme) => (theme?.zIndex?.modal ?? 1300) + 1,
+            pointerEvents: 'auto',
+          }}
+          style={{
+            top: mapContextInfo.position.y,
+            left: mapContextInfo.position.x,
+          }}
+        >
+          <Stack spacing={1.5}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="subtitle2" fontWeight={700}>
+                Diem vua chon
+              </Typography>
+              <IconButton size="small" onClick={handleCloseContext}>
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+            <Typography variant="body2" color="text.secondary">
+              {coordinateLabel}
+            </Typography>
+
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleNearestRoute}
+              disabled={!mapContextInfo.nearest || !onBuildNearestRoute}
+            >
+              Tim cua hang co duong di ngan nhat
+            </Button>
+            {mapContextInfo.showNearest && mapContextInfo.nearest && (
+              <Box
+                sx={{
+                  borderRadius: 1,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  p: 1,
+                  backgroundColor: 'rgba(25, 118, 210, 0.04)',
+                }}
+              >
+                <Typography variant="body2" fontWeight={600}>
+                  {mapContextInfo.nearest.stop.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Khoang cach: {formatDistance(mapContextInfo.nearest.distanceKm)}
+                </Typography>
+              </Box>
+            )}
+            <Button
+              variant="contained"
+              size="small"
+              color="primary"
+              onClick={handleQuickAddStop}
+              disabled={!onAddCoordinateStop}
+            >
+              Them diem vao diem dung
+            </Button>
+
+            <Button
+              variant="contained"
+              size="small"
+              color="secondary"
+              onClick={handleCreateStore}
+              disabled={!onCreateStoreAtPoint}
+            >
+              Them cua hang tai diem nay
+            </Button>
+          </Stack>
+        </Box>
+      )}
 
       <Box
         sx={{
@@ -276,23 +443,6 @@ const MapView = ({
           )}
         </Stack>
       </Box>
-
-      <style>{`
-        .base-marker-icon #base-pin {
-          width: 34px;
-          height: 34px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #1976d2, #64b5f6);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: #fff;
-          font-weight: 700;
-          border: 2px solid rgba(255, 255, 255, 0.9);
-          box-shadow: 0 4px 10px rgba(25, 118, 210, 0.45);
-          font-family: 'Roboto', sans-serif;
-        }
-      `}</style>
     </Box>
   );
 };

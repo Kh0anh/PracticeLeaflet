@@ -49,12 +49,7 @@ const ROUTE_RESET = {
 function App() {
   const { base, stops, defaultZoom } = MAP_CONFIG;
 
-  const initialRoute = useMemo(
-    () => stops.slice(0, 2).map((stop) => stop.id),
-    [stops],
-  );
-
-  const [routeStopIds, setRouteStopIds] = useState(initialRoute);
+  const [routeStopIds, setRouteStopIds] = useState([]);
   const [customStops, setCustomStops] = useState([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [snackbar, setSnackbar] = useState(null);
@@ -72,6 +67,22 @@ function App() {
     });
     return map;
   }, [base, nonBaseStops]);
+
+  useEffect(() => {
+    setCustomStops((prev) => {
+      if (!prev.some((stop) => stop.ephemeral)) return prev;
+      const routeSet = new Set(routeStopIds);
+      let changed = false;
+      const next = prev.filter((stop) => {
+        if (stop.ephemeral && !routeSet.has(stop.id)) {
+          changed = true;
+          return false;
+        }
+        return true;
+      });
+      return changed ? next : prev;
+    });
+  }, [routeStopIds]);
 
   useEffect(() => {
     if (routeStopIds.length < 2) {
@@ -142,7 +153,9 @@ function App() {
 
   const availableStops = useMemo(
     () =>
-      nonBaseStops.filter((stop) => !routeStopIds.includes(stop.id)),
+      nonBaseStops.filter(
+        (stop) => !stop.ephemeral && !routeStopIds.includes(stop.id),
+      ),
     [nonBaseStops, routeStopIds],
   );
 
@@ -193,17 +206,100 @@ function App() {
     });
   };
 
-  const handleCreateCustomStop = (payload) => {
+  const handleClearRouteStops = () => {
+    if (!routeStopIds.length) return;
+    setRouteStopIds([]);
+    setSnackbar({
+      message: 'Da xoa tat ca diem dung',
+      severity: 'info',
+    });
+  };
+
+  const createCustomStop = (payload, { addToRoute = true, ephemeral = false } = {}) => {
     const newStopId = `custom-${Date.now()}`;
     const newStop = {
       id: newStopId,
       ...payload,
+      ephemeral,
     };
 
     setCustomStops((prev) => [...prev, newStop]);
-    setRouteStopIds((prev) => [...prev, newStopId]);
+    if (addToRoute) {
+      setRouteStopIds((prev) => [...prev, newStopId]);
+    }
+    return newStop;
+  };
+
+  const isValidPosition = (position) =>
+    Array.isArray(position) &&
+    position.length === 2 &&
+    position.every((value) => typeof value === 'number' && Number.isFinite(value));
+
+  const formatPositionLabel = (position) => {
+    if (!isValidPosition(position)) return '';
+    const [lat, lon] = position;
+    return `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+  };
+
+  const handleCreateCustomStop = (payload) => {
+    createCustomStop(payload, { addToRoute: true });
     setIsAddDialogOpen(false);
     setSnackbar({ message: 'Da tao diem dung moi', severity: 'success' });
+  };
+
+  const handleAddCoordinateAsRouteStop = (position) => {
+    if (!isValidPosition(position)) return;
+
+    createCustomStop(
+      {
+        name: `Diem tam thoi (${formatPositionLabel(position)})`,
+        description: 'Duoc tao tu ban do',
+        position,
+      },
+      { addToRoute: true, ephemeral: true },
+    );
+    setSnackbar({
+      message: 'Da them diem tam thoi vao lo trinh',
+      severity: 'success',
+    });
+  };
+
+  const handleCreateStoreAtPoint = (position) => {
+    if (!isValidPosition(position)) return;
+
+    createCustomStop(
+      {
+        name: `Cua hang moi (${formatPositionLabel(position)})`,
+        description: 'Duoc them tu ban do',
+        position,
+      },
+      { addToRoute: false },
+    );
+    setSnackbar({
+      message: 'Da them cua hang moi vao danh sach',
+      severity: 'success',
+    });
+  };
+
+  const handleBuildRouteToNearestStop = (position, stopId) => {
+    if (!isValidPosition(position) || !stopId) return;
+    const targetStop = stopById[stopId];
+    if (!targetStop) return;
+
+    const newStop = createCustomStop(
+      {
+        name: `Diem chon (${formatPositionLabel(position)})`,
+        description: 'Tao tu chuc nang tim cua hang gan nhat',
+        position,
+      },
+      { addToRoute: false, ephemeral: true },
+    );
+
+    setRouteStopIds([newStop.id, stopId]);
+    setSnackbar({
+      message: `Da tao lo trinh toi ${targetStop.name}`,
+      severity: 'info',
+    });
   };
 
   return (
@@ -230,6 +326,7 @@ function App() {
           onRemoveStop={handleRemoveStop}
           onMoveStop={handleMoveStop}
           onOpenAddDialog={() => setIsAddDialogOpen(true)}
+          onClearRoute={handleClearRouteStops}
         />
 
         <MapView
@@ -242,6 +339,9 @@ function App() {
           routeCoordinates={routeDetails.coordinates}
           defaultZoom={defaultZoom}
           onAddStop={handleAddStop}
+          onAddCoordinateStop={handleAddCoordinateAsRouteStop}
+          onCreateStoreAtPoint={handleCreateStoreAtPoint}
+          onBuildNearestRoute={handleBuildRouteToNearestStop}
         />
       </Box>
 

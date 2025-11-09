@@ -19,6 +19,7 @@ import AddIcon from '@mui/icons-material/Add';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import DeleteIcon from '@mui/icons-material/Delete';
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import RouteIcon from '@mui/icons-material/Route';
 import { formatDistance, formatDuration } from '../utils/routeUtils.js';
 
@@ -91,7 +92,7 @@ const StopListItem = ({
 const SegmentList = ({ segments }) => (
   <List dense disablePadding>
     {segments.map((segment) => (
-      <ListItem key={segment.id} divider>
+      <ListItem key={segment.id} divider alignItems="flex-start">
         <ListItemText
           primary={
             <Stack direction="row" spacing={1} alignItems="center">
@@ -102,17 +103,54 @@ const SegmentList = ({ segments }) => (
             </Stack>
           }
           secondary={
-            <Stack
-              direction="row"
-              spacing={1.5}
-              divider={<Divider flexItem orientation="vertical" />}
-            >
-              <Typography variant="caption">
-                Quang duong: {formatDistance(segment.distanceKm)}
-              </Typography>
-              <Typography variant="caption">
-                Thoi gian: {formatDuration(segment.durationMinutes)}
-              </Typography>
+            <Stack spacing={1}>
+              <Stack
+                direction="row"
+                spacing={1.5}
+                divider={<Divider flexItem orientation="vertical" />}
+              >
+                <Typography variant="caption">
+                  Quang duong: {formatDistance(segment.distanceKm)}
+                </Typography>
+                <Typography variant="caption">
+                  Thoi gian: {formatDuration(segment.durationMinutes)}
+                </Typography>
+              </Stack>
+
+              {segment.instructions?.length ? (
+                <Stack spacing={0.75}>
+                  {segment.instructions.map((instruction, index) => (
+                    <Stack
+                      key={instruction.id}
+                      direction="row"
+                      spacing={1}
+                      alignItems="flex-start"
+                    >
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ width: 16 }}
+                      >
+                        {index + 1}.
+                      </Typography>
+                      <Stack spacing={0.25} sx={{ flex: 1 }}>
+                        <Typography variant="caption">
+                          {instruction.text}
+                        </Typography>
+                        {instruction.distanceLabel && (
+                          <Typography variant="caption" color="text.secondary">
+                            Khoang cach: {instruction.distanceLabel}
+                          </Typography>
+                        )}
+                      </Stack>
+                    </Stack>
+                  ))}
+                </Stack>
+              ) : (
+                <Typography variant="caption" color="text.secondary">
+                  Chi tiet chi duong se hien khi co du lieu OSRM.
+                </Typography>
+              )}
             </Stack>
           }
         />
@@ -132,6 +170,7 @@ const Sidebar = ({
   onRemoveStop,
   onMoveStop,
   onOpenAddDialog,
+  onClearRoute,
 }) => {
   const [selectedStop, setSelectedStop] = useState(null);
 
@@ -235,6 +274,19 @@ const Sidebar = ({
                 <AddIcon />
               </Button>
             </Tooltip>
+            <Tooltip title="Xoa tat ca diem dung">
+              <span>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={onClearRoute}
+                  disabled={!routeStops.length}
+                  sx={{ minWidth: 0, px: 1.2 }}
+                >
+                  <DeleteSweepIcon />
+                </Button>
+              </span>
+            </Tooltip>
           </Stack>
 
           <Box>
@@ -267,7 +319,7 @@ const Sidebar = ({
           {showSegments && (
             <Box>
               <Typography variant="subtitle2" color="text.secondary" mb={1}>
-                Chi tiet tung chang
+                Chi duong chi tiet hon
               </Typography>
               <SegmentList segments={segments} />
             </Box>
