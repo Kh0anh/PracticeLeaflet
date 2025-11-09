@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -14,8 +14,10 @@ import { MAP_CONFIG } from './config/mapConfig.js';
 import {
   buildFallbackSegments,
   buildSegmentsFromLegs,
+  buildTurnInstructions,
   convertRouteCoordinates,
   getRouteTotals,
+  haversineDistance,
 } from './utils/routeUtils.js';
 import './App.css';
 
@@ -46,19 +48,33 @@ const ROUTE_RESET = {
   error: null,
 };
 
+const MANUAL_ROUTE_RESET = {
+  status: 'idle',
+  coordinates: [],
+  distanceKm: 0,
+  durationMinutes: 0,
+  error: null,
+  instructions: [],
+};
+
+const MANUAL_MODE = {
+  NEAREST: 'nearest',
+  CUSTOM: 'custom',
+};
+
 function App() {
   const { base, stops, defaultZoom } = MAP_CONFIG;
 
-  const initialRoute = useMemo(
-    () => stops.slice(0, 2).map((stop) => stop.id),
-    [stops],
-  );
-
-  const [routeStopIds, setRouteStopIds] = useState(initialRoute);
+  const [routeStopIds, setRouteStopIds] = useState([]);
   const [customStops, setCustomStops] = useState([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [snackbar, setSnackbar] = useState(null);
   const [routeDetails, setRouteDetails] = useState(ROUTE_RESET);
+  const [manualMode, setManualMode] = useState(MANUAL_MODE.NEAREST);
+  const [manualPoints, setManualPoints] = useState([]);
+  const [manualDestination, setManualDestination] = useState(null);
+  const [manualRoute, setManualRoute] = useState(MANUAL_ROUTE_RESET);
+  const manualRouteAbortRef = useRef(null);
 
   const nonBaseStops = useMemo(
     () => [...stops, ...customStops],
@@ -135,6 +151,20 @@ function App() {
     return () => controller.abort();
   }, [routeStopIds, stopById]);
 
+  useEffect(
+    () => () => {
+      manualRouteAbortRef.current?.abort();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    manualRouteAbortRef.current?.abort();
+    setManualPoints([]);
+    setManualDestination(null);
+    setManualRoute(MANUAL_ROUTE_RESET);
+  }, [manualMode]);
+
   const routeStops = useMemo(
     () => routeStopIds.map((id) => stopById[id]).filter(Boolean),
     [routeStopIds, stopById],
@@ -173,6 +203,16 @@ function App() {
     return getRouteTotals(segments);
   }, [routeDetails, segments]);
 
+  const turnInstructions = useMemo(() => {
+    if (routeDetails.status !== 'success') return [];
+
+    return buildTurnInstructions({
+      legs: routeDetails.legs,
+      routeStopIds,
+      stopById,
+    });
+  }, [routeDetails, routeStopIds, stopById]);
+
   const handleAddStop = (stopId) => {
     if (!stopId || routeStopIds.includes(stopId)) return;
     setRouteStopIds((prev) => [...prev, stopId]);
@@ -192,6 +232,185 @@ function App() {
       return next;
     });
   };
+
+  const handleResetRoute = () => {
+    if (routeStopIds.length === 0) return;
+    setRouteStopIds([]);
+    setSnackbar({ message: 'Da huy lo trinh hien tai', severity: 'info' });
+  };
+
+  const fetchManualRoute = useCallback(
+    (points, destination) => {
+      if (!Array.isArray(points) || points.length !== 2) return;
+
+      manualRouteAbortRef.current?.abort();
+      const controller = new AbortController();
+      manualRouteAbortRef.current = controller;
+
+      setManualRoute({
+        status: 'loading',
+        coordinates: [],
+        distanceKm: 0,
+        durationMinutes: 0,
+        error: null,
+        instructions: [],
+      });
+      setManualDestination(destination ?? null);
+
+      const [[startLat, startLng], [endLat, endLng]] = points;
+      const query = `${startLng},${startLat};${endLng},${endLat}`;
+      const url = `https://router.project-osrm.org/route/v1/driving/${query}?overview=full&steps=true&geometries=geojson`;
+
+      fetch(url, { signal: controller.signal })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(`OSRM tra ve loi ${res.status}`);
+          }
+          return res.json();
+        })
+        .then((data) => {
+          if (controller.signal.aborted) return;
+          const route = data.routes?.[0];
+          if (!route) {
+            throw new Error('Khong tim thay lo trinh phu hop');
+          }
+
+          const legs = route.legs ?? [];
+          const manualStopIds = ['manual-start', 'manual-end'];
+          const startName =
+            manualMode === MANUAL_MODE.NEAREST ? 'Vi tri cua ban' : 'Diem bat dau';
+          const destinationName =
+            destination?.name ??
+            (manualMode === MANUAL_MODE.NEAREST ? 'Cua hang gan nhat' : 'Diem ket thuc');
+
+          const manualStopMap = {
+            'manual-start': {
+              id: 'manual-start',
+              name: startName,
+              position: points[0],
+            },
+            'manual-end': {
+              id: 'manual-end',
+              name: destinationName,
+              position: points[1],
+            },
+          };
+
+          const instructions = buildTurnInstructions({
+            legs,
+            routeStopIds: manualStopIds,
+            stopById: manualStopMap,
+          });
+
+          setManualRoute({
+            status: 'success',
+            coordinates: convertRouteCoordinates(route),
+            distanceKm: route.distance ? route.distance / 1000 : 0,
+            durationMinutes: route.duration ? route.duration / 60 : 0,
+            error: null,
+            instructions,
+          });
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) return;
+          setManualRoute({
+            status: 'error',
+            coordinates: [],
+            distanceKm: 0,
+            durationMinutes: 0,
+            error: error.message ?? 'Khong the tinh duong di',
+            instructions: [],
+          });
+          setManualDestination(null);
+        });
+    },
+    [manualMode],
+  );
+
+  const handleManualMapClick = useCallback(
+    (latlng) => {
+      const point = [latlng.lat, latlng.lng];
+
+      if (manualMode === MANUAL_MODE.NEAREST) {
+        const nearestStop = nonBaseStops.reduce(
+          (acc, stop) => {
+            const distance = haversineDistance(point, stop.position);
+            if (!acc || distance < acc.distance) {
+              return { stop, distance };
+            }
+            return acc;
+          },
+          null,
+        );
+
+        if (!nearestStop) {
+          manualRouteAbortRef.current?.abort();
+          setManualPoints([point]);
+          setManualDestination(null);
+          setManualRoute({
+            ...MANUAL_ROUTE_RESET,
+            error: 'Khong tim thay cua hang gan nhat',
+          });
+          return;
+        }
+
+        const destinationStop = nearestStop.stop;
+        const nextPoints = [point, destinationStop.position];
+
+        setManualPoints(nextPoints);
+        fetchManualRoute(nextPoints, destinationStop);
+        return;
+      }
+
+      if (manualPoints.length === 0) {
+        manualRouteAbortRef.current?.abort();
+        setManualDestination(null);
+        setManualRoute(MANUAL_ROUTE_RESET);
+        setManualPoints([point]);
+        return;
+      }
+
+      if (manualPoints.length === 1) {
+        const nextPoints = [manualPoints[0], point];
+        setManualPoints(nextPoints);
+        fetchManualRoute(nextPoints, { name: 'Diem ket thuc', position: point });
+        return;
+      }
+
+      manualRouteAbortRef.current?.abort();
+      setManualRoute(MANUAL_ROUTE_RESET);
+      setManualDestination(null);
+      setManualPoints([point]);
+    },
+    [fetchManualRoute, manualMode, manualPoints, nonBaseStops],
+  );
+
+  const handleManualPointRemove = useCallback(
+    (index) => {
+      manualRouteAbortRef.current?.abort();
+      setManualRoute(MANUAL_ROUTE_RESET);
+      setManualDestination(null);
+      setManualPoints((prev) => {
+        if (index < 0 || index >= prev.length) return prev;
+        if (manualMode === MANUAL_MODE.NEAREST || index === 0) {
+          return [];
+        }
+        return prev.filter((_, idx) => idx !== index);
+      });
+    },
+    [manualMode],
+  );
+
+  const handleManualReset = useCallback(() => {
+    manualRouteAbortRef.current?.abort();
+    setManualPoints([]);
+    setManualDestination(null);
+    setManualRoute(MANUAL_ROUTE_RESET);
+  }, []);
+
+  const handleManualModeChange = useCallback((mode) => {
+    setManualMode(mode);
+  }, []);
 
   const handleCreateCustomStop = (payload) => {
     const newStopId = `custom-${Date.now()}`;
@@ -226,6 +445,14 @@ function App() {
           totals={totals}
           routeStatus={routeDetails.status}
           routeError={routeDetails.error}
+          turnInstructions={turnInstructions}
+          manualMode={manualMode}
+          onManualModeChange={handleManualModeChange}
+          manualRoute={manualRoute}
+          manualDestination={manualDestination}
+          manualPoints={manualPoints}
+          onManualReset={handleManualReset}
+          onResetRoute={handleResetRoute}
           onAddStop={handleAddStop}
           onRemoveStop={handleRemoveStop}
           onMoveStop={handleMoveStop}
@@ -237,11 +464,15 @@ function App() {
           allStops={nonBaseStops}
           routeStops={routeStops}
           segments={segments}
-          routeStatus={routeDetails.status}
-          routeError={routeDetails.error}
           routeCoordinates={routeDetails.coordinates}
           defaultZoom={defaultZoom}
           onAddStop={handleAddStop}
+          manualMode={manualMode}
+          manualPoints={manualPoints}
+          manualRoute={manualRoute}
+          manualDestination={manualDestination}
+          onManualMapClick={handleManualMapClick}
+          onManualPointRemove={handleManualPointRemove}
         />
       </Box>
 

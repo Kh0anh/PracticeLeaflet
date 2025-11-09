@@ -1,0 +1,11 @@
+*** Begin Patch
+*** Update File: src\\components\\Sidebar.jsx
+@@
+ const Sidebar = ({
+   routeStops,
+   availableStops,
++  segments,
+   totals,
+   routeStatus,
+*** End Patch
+

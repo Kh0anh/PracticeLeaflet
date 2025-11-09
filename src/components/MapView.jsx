@@ -1,14 +1,22 @@
-import { Box, Button, Chip, Stack, Typography } from '@mui/material';
-import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
-import { useEffect, useMemo } from 'react';
+import { Box, Button, Stack, Typography } from '@mui/material';
+import {
+  CircleMarker,
+  MapContainer,
+  Marker,
+  Polyline,
+  Popup,
+  TileLayer,
+  Tooltip,
+  useMap,
+  useMapEvents,
+} from 'react-leaflet';
+import { Fragment, useEffect, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import RoomIcon from '@mui/icons-material/Room';
 import availableStopPng from '../assets/available-stop-marker.png';
 import routeEndPng from '../assets/route-end-marker.png';
 import routeStartPng from '../assets/route-start-marker.png';
 import routeStopPng from '../assets/route-stop-marker.png';
-import { formatDistance, formatDuration } from '../utils/routeUtils.js';
 
 const markerSize = {
   iconSize: [44, 64],
@@ -40,6 +48,34 @@ const availableMarkerIcon = L.icon({
   ...markerSize,
 });
 
+const ROUTE_PRIMARY_STYLE = {
+  color: '#2e7d32',
+  weight: 7,
+  opacity: 0.95,
+  lineCap: 'round',
+  lineJoin: 'round',
+};
+
+const ROUTE_GLOW_STYLE = {
+  color: '#a5d6a7',
+  weight: 4,
+  opacity: 0.9,
+  lineCap: 'round',
+  lineJoin: 'round',
+};
+
+const ManualRouteEvents = ({ onMapClick }) => {
+  useMapEvents({
+    click: (event) => {
+      if (onMapClick) {
+        onMapClick(event.latlng);
+      }
+    },
+  });
+
+  return null;
+};
+
 const FitBounds = ({ points }) => {
   const map = useMap();
 
@@ -57,11 +93,15 @@ const MapView = ({
   allStops,
   routeStops,
   segments,
-  routeStatus,
-  routeError,
-  routeCoordinates,
+  routeCoordinates = [],
   defaultZoom,
   onAddStop,
+  manualMode = 'nearest',
+  manualPoints = [],
+  manualRoute = {},
+  manualDestination,
+  onManualMapClick,
+  onManualPointRemove,
 }) => {
   const routeStopIdSet = useMemo(
     () => new Set(routeStops.map((stop) => stop.id)),
@@ -71,15 +111,26 @@ const MapView = ({
   const endStopId =
     routeStops.length > 1 ? routeStops[routeStops.length - 1]?.id ?? null : null;
 
+  const manualCoordinates = useMemo(
+    () => manualRoute.coordinates ?? [],
+    [manualRoute.coordinates],
+  );
+
   const boundsPoints = useMemo(() => {
+    if (manualCoordinates.length) {
+      return manualCoordinates;
+    }
     if (routeCoordinates.length) {
       return routeCoordinates;
+    }
+    if (manualPoints.length) {
+      return manualPoints;
     }
     if (routeStops.length) {
       return routeStops.map((stop) => stop.position);
     }
     return [base.position];
-  }, [routeCoordinates, routeStops, base.position]);
+  }, [manualCoordinates, routeCoordinates, manualPoints, routeStops, base.position]);
 
   return (
     <Box component="section" sx={{ position: 'relative', flex: 1 }}>
@@ -93,6 +144,41 @@ const MapView = ({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+
+        <ManualRouteEvents onMapClick={onManualMapClick} />
+
+        {manualPoints.map((point, index) => {
+          const isStart = index === 0;
+          const color = isStart ? '#00a152' : '#c62828';
+          const tooltipText = isStart
+            ? manualMode === 'nearest'
+              ? 'Vi tri cua ban (click de huy)'
+              : 'Diem bat dau (click de huy)'
+            : manualDestination?.name
+              ? `${manualDestination.name} (click de doi)`
+              : 'Diem ket thuc (click de doi)';
+
+          return (
+            <CircleMarker
+              key={`manual-point-${index}`}
+              center={point}
+              radius={8}
+              pathOptions={{
+                color,
+                fillColor: color,
+                fillOpacity: 0.9,
+                weight: 2,
+              }}
+              eventHandlers={{
+                click: () => onManualPointRemove?.(index),
+              }}
+            >
+              <Tooltip direction="top" offset={[0, -8]} permanent>
+                {tooltipText}
+              </Tooltip>
+            </CircleMarker>
+          );
+        })}
 
         {allStops.map((stop) => {
           const isStopInRoute = routeStopIdSet.has(stop.id);
@@ -183,100 +269,28 @@ const MapView = ({
         </Marker>
 
         {segments.map((segment) => (
-          <Polyline
-            key={segment.id}
-            positions={segment.geometry}
-            pathOptions={{
-              color: segment.color,
-              weight: 6,
-              opacity: 0.9,
-            }}
-          />
+          <Fragment key={segment.id}>
+            <Polyline positions={segment.geometry} pathOptions={ROUTE_PRIMARY_STYLE} />
+            <Polyline positions={segment.geometry} pathOptions={ROUTE_GLOW_STYLE} />
+          </Fragment>
         ))}
 
         {routeCoordinates.length > 0 && (
-          <Polyline
-            positions={routeCoordinates}
-            pathOptions={{
-              color: '#1e88e5',
-              weight: 4,
-              opacity: 0.35,
-            }}
-          />
+          <Fragment>
+            <Polyline positions={routeCoordinates} pathOptions={ROUTE_PRIMARY_STYLE} />
+            <Polyline positions={routeCoordinates} pathOptions={ROUTE_GLOW_STYLE} />
+          </Fragment>
+        )}
+
+        {manualCoordinates.length > 0 && (
+          <Fragment>
+            <Polyline positions={manualCoordinates} pathOptions={ROUTE_PRIMARY_STYLE} />
+            <Polyline positions={manualCoordinates} pathOptions={ROUTE_GLOW_STYLE} />
+          </Fragment>
         )}
 
         <FitBounds points={boundsPoints} />
       </MapContainer>
-
-      <Box
-        sx={{
-          position: 'absolute',
-          top: 16,
-          left: 16,
-          backgroundColor: 'rgba(255,255,255,0.95)',
-          borderRadius: 2,
-          boxShadow: 3,
-          p: 2,
-          minWidth: 240,
-        }}
-      >
-        <Stack spacing={1}>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <RoomIcon color="primary" />
-            <Typography variant="subtitle1" fontWeight={700}>
-              Lo trinh hien tai
-            </Typography>
-          </Stack>
-
-          {routeStatus === 'loading' ? (
-            <Typography variant="body2" color="text.secondary">
-              Dang truy van tu OSRM, vui long doi...
-            </Typography>
-          ) : routeStops.length < 2 ? (
-            <Typography variant="body2" color="text.secondary">
-              Chon toi thieu hai diem de xay dung lo trinh.
-            </Typography>
-          ) : (
-            segments.map((segment) => (
-              <Stack
-                key={segment.id}
-                spacing={0.5}
-                sx={{
-                  borderRadius: 1,
-                  px: 1,
-                  py: 0.75,
-                  backgroundColor: 'rgba(25, 118, 210, 0.06)',
-                }}
-              >
-                <Typography variant="body2" fontWeight={600}>
-                  {`${segment.from.name} -> ${segment.to.name}`}
-                </Typography>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Chip
-                    size="small"
-                    label={formatDuration(segment.durationMinutes)}
-                    sx={{
-                      backgroundColor: segment.color,
-                      color: 'white',
-                      fontWeight: 600,
-                    }}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    {formatDistance(segment.distanceKm)}
-                  </Typography>
-                </Stack>
-              </Stack>
-            ))
-          )}
-
-          {routeError && (
-            <Typography variant="caption" color="error">
-              {routeError}
-            </Typography>
-          )}
-        </Stack>
-      </Box>
-
       <style>{`
         .base-marker-icon #base-pin {
           width: 34px;
