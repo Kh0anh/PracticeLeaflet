@@ -1,7 +1,27 @@
+import osrmTextInstructionsFactory from 'osrm-text-instructions';
+
+const createTextInstructions =
+  typeof osrmTextInstructionsFactory === 'function'
+    ? osrmTextInstructionsFactory
+    : osrmTextInstructionsFactory?.default;
+
 const EARTH_RADIUS_KM = 6371;
 const DEFAULT_SPEED_KMH = 45;
 const DEFAULT_SEGMENT_COLOR = '#1976d2';
-const DEFAULT_ROAD_NAME = 'duong khong ten';
+const DEFAULT_ROAD_NAME = 'đường không tên';
+const INSTRUCTION_LANGUAGE = 'vi';
+
+const textInstructionCompiler = (() => {
+  if (!createTextInstructions) return null;
+  try {
+    return createTextInstructions('v5');
+  } catch (error) {
+    if (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production') {
+      console.warn('Failed to initialize OSRM text instructions', error);
+    }
+    return null;
+  }
+})();
 
 const toRadians = (deg) => (deg * Math.PI) / 180;
 
@@ -28,12 +48,12 @@ export const formatDistance = (km) =>
   km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
 
 export const formatDuration = (minutes) => {
-  if (minutes < 1) return '< 1 phut';
-  if (minutes < 60) return `${Math.round(minutes)} phut`;
+  if (minutes < 1) return '< 1 phút';
+  if (minutes < 60) return `${Math.round(minutes)} phút`;
 
   const hours = Math.floor(minutes / 60);
   const mins = Math.round(minutes % 60);
-  return mins === 0 ? `${hours} gio` : `${hours} gio ${mins} phut`;
+  return mins === 0 ? `${hours} giờ` : `${hours} giờ ${mins} phút`;
 };
 
 const convertGeoJsonCoords = (coords = []) =>
@@ -43,20 +63,34 @@ const normalizeModifierKey = (modifier = '') =>
   `${modifier ?? ''}`.toLowerCase().replace(/\s+/g, '_');
 
 const modifierTextMap = {
-  left: 'trai',
-  right: 'phai',
-  straight: 'thang',
-  slight_left: 'cheo trai',
-  slight_right: 'cheo phai',
-  sharp_left: 'goc trai',
-  sharp_right: 'goc phai',
-  uturn: 'quay dau',
+  left: 'trái',
+  right: 'phải',
+  straight: 'thẳng',
+  slight_left: 'chéo trái',
+  slight_right: 'chéo phải',
+  sharp_left: 'góc trái',
+  sharp_right: 'góc phải',
+  uturn: 'quay đầu',
 };
 
 const getModifierText = (modifier) => {
   if (!modifier) return null;
   const key = normalizeModifierKey(modifier);
   return modifierTextMap[key] ?? modifier;
+};
+
+const compileOsrmInstruction = (step = {}, options = {}) => {
+  if (!textInstructionCompiler || !step?.maneuver) return null;
+  try {
+    const text = textInstructionCompiler.compile(INSTRUCTION_LANGUAGE, step, {
+      legIndex: options.legIndex ?? 0,
+      legCount: options.legCount ?? 1,
+      waypointName: options.toName,
+    });
+    return typeof text === 'string' && text.trim().length ? text.trim() : null;
+  } catch {
+    return null;
+  }
 };
 
 const formatRoadName = (name) =>
@@ -67,7 +101,7 @@ const formatStepDistanceLabel = (distanceMeters) => {
   return formatDistance(distanceMeters / 1000);
 };
 
-const buildStepDescription = (step = {}, { fromName, toName } = {}) => {
+const buildFallbackStepDescription = (step = {}, { fromName, toName } = {}) => {
   const { maneuver = {}, name } = step;
   if (maneuver.instruction) return maneuver.instruction;
 
@@ -79,49 +113,58 @@ const buildStepDescription = (step = {}, { fromName, toName } = {}) => {
   switch (type) {
     case 'depart': {
       const origin = fromName ?? 'diem bat dau';
-      return `Roi ${origin} va di tren ${roadName}`;
+      return `Rời ${origin} và đi trên ${roadName}`;
     }
     case 'arrive': {
       const destination = toName ?? 'diem den';
       return `Den ${destination}`;
     }
     case 'roundabout': {
-      const exitText = maneuver.exit ? `, ra o cua thu ${maneuver.exit}` : '';
-      return `Vao vong xoay${exitText} de vao ${roadName}`;
+      const exitText = maneuver.exit ? `, ra ở cửa thứ ${maneuver.exit}` : '';
+      return `Vào vòng xoay${exitText} để vào ${roadName}`;
     }
     case 'fork':
       return modifierText
-        ? `Tai nga ba, giu ben ${modifierText} de vao ${roadName}`
-        : `Tai nga ba, di theo ${roadName}`;
+        ? `Tại ngã ba, giữ bên ${modifierText} để vào ${roadName}`
+        : `Tại ngã ba, đi theo ${roadName}`;
     case 'merge':
       return modifierText
-        ? `Nhap lan ve ben ${modifierText} de vao ${roadName}`
-        : `Nhap lan de vao ${roadName}`;
+        ? `Nhập làn về bên ${modifierText} để vào ${roadName}`
+        : `Nhập làn để vào ${roadName}`;
     case 'end_of_road':
     case 'end of road':
       return modifierText
-        ? `Cuoi duong, re ${modifierText} vao ${roadName}`
-        : `Cuoi duong, di vao ${roadName}`;
+        ? `Cuối đường, rẽ ${modifierText} vào ${roadName}`
+        : `Cuối đường, đi vào ${roadName}`;
     case 'turn':
       if (normalizedModifier === 'uturn') {
-        return `Quay dau de vao ${roadName}`;
+        return `Quay đầu để vào ${roadName}`;
       }
       if (modifierText && modifierText !== 'thang') {
-        return `Re ${modifierText} vao ${roadName}`;
+        return `Rẽ ${modifierText} vào ${roadName}`;
       }
-      return `Re vao ${roadName}`;
+      return `Rẽ vào ${roadName}`;
     case 'continue':
       if (modifierText && modifierText !== 'thang') {
-        return `Tiep tuc ${modifierText} tren ${roadName}`;
+        return `Tiếp tục ${modifierText} trên ${roadName}`;
       }
-      return `Tiep tuc tren ${roadName}`;
+      return `Tiếp tục trên ${roadName}`;
     default: {
       if (modifierText && modifierText !== 'thang') {
-        return `Di theo huong ${modifierText} tren ${roadName}`;
+        return `Đi theo hướng ${modifierText} trên ${roadName}`;
       }
-      return `Di tren ${roadName}`;
+      return `Đi trên ${roadName}`;
     }
   }
+};
+
+const buildStepDescription = (step = {}, context = {}) => {
+  if (step?.maneuver?.instruction) return step.maneuver.instruction;
+
+  const compiled = compileOsrmInstruction(step, context);
+  if (compiled) return compiled;
+
+  return buildFallbackStepDescription(step, context);
 };
 
 const mergeStepsGeometry = (steps = []) => {
@@ -158,17 +201,34 @@ const baseSegmentData = ({ from, to, fromId, toId }) => ({
   color: DEFAULT_SEGMENT_COLOR,
 });
 
-const buildLegInstructions = ({ leg, from, to, fromId, toId }) => {
+const buildLegInstructions = ({
+  leg,
+  from,
+  to,
+  fromId,
+  toId,
+  legIndex = 0,
+  legCount = 1,
+}) => {
   if (!leg?.steps?.length) return [];
 
-  return leg.steps.map((step, index) => ({
-    id: `${fromId}-${toId}-instruction-${index}`,
-    text: buildStepDescription(step, {
-      fromName: from?.name,
-      toName: to?.name,
-    }),
-    distanceLabel: formatStepDistanceLabel(step.distance),
-  }));
+  return leg.steps.map((step, index) => {
+    const maneuverType = step?.maneuver?.type?.toLowerCase?.() ?? null;
+    const normalizedModifier = normalizeModifierKey(step?.maneuver?.modifier ?? '');
+
+    return {
+      id: `${fromId}-${toId}-instruction-${index}`,
+      text: buildStepDescription(step, {
+        fromName: from?.name,
+        toName: to?.name,
+        legIndex,
+        legCount,
+      }),
+      distanceLabel: formatStepDistanceLabel(step.distance),
+      maneuverType,
+      maneuverModifier: normalizedModifier || null,
+    };
+  });
 };
 
 export const buildSegmentsFromLegs = ({
@@ -177,6 +237,8 @@ export const buildSegmentsFromLegs = ({
   stopById,
 }) => {
   if (!Array.isArray(routeStopIds) || routeStopIds.length < 2) return [];
+
+  const legCount = routeStopIds.length - 1;
 
   return routeStopIds.slice(0, -1).map((fromId, index) => {
     const toId = routeStopIds[index + 1];
@@ -195,6 +257,8 @@ export const buildSegmentsFromLegs = ({
       to,
       fromId,
       toId,
+      legIndex: index,
+      legCount,
     });
 
     return {

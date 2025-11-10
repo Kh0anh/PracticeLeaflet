@@ -44,15 +44,15 @@ const AddStopDialog = ({ open, onClose, onSubmit }) => {
     const nextErrors = {};
 
     if (!form.name.trim()) {
-      nextErrors.name = 'Vui long nhap ten diem dung';
+      nextErrors.name = 'Vui lòng nhập tên điểm dừng';
     }
 
     if (!isValidCoordinate(form.latitude, -90, 90)) {
-      nextErrors.latitude = 'Vi do khong hop le';
+      nextErrors.latitude = 'Vĩ độ không hợp lệ';
     }
 
     if (!isValidCoordinate(form.longitude, -180, 180)) {
-      nextErrors.longitude = 'Kinh do khong hop le';
+      nextErrors.longitude = 'Kinh độ không hợp lệ';
     }
 
     setErrors(nextErrors);
@@ -68,11 +68,11 @@ const AddStopDialog = ({ open, onClose, onSubmit }) => {
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Them diem dung moi</DialogTitle>
+      <DialogTitle>Thêm điểm dừng mới</DialogTitle>
       <DialogContent>
         <Stack spacing={2} mt={1}>
           <TextField
-            label="Ten diem dung"
+            label="Tên điểm dừng"
             value={form.name}
             onChange={handleChange('name')}
             error={Boolean(errors.name)}
@@ -81,7 +81,7 @@ const AddStopDialog = ({ open, onClose, onSubmit }) => {
           />
 
           <TextField
-            label="Mo ta (tuy chon)"
+            label="Mô tả (tùy chọn)"
             value={form.description}
             onChange={handleChange('description')}
             multiline
@@ -94,14 +94,14 @@ const AddStopDialog = ({ open, onClose, onSubmit }) => {
             gap={2}
           >
             <TextField
-              label="Vi do"
+              label="Vĩ độ"
               value={form.latitude}
               onChange={handleChange('latitude')}
               error={Boolean(errors.latitude)}
               helperText={errors.latitude ?? 'VD: 21.0285'}
             />
             <TextField
-              label="Kinh do"
+              label="Kinh độ"
               value={form.longitude}
               onChange={handleChange('longitude')}
               error={Boolean(errors.longitude)}
@@ -111,9 +111,9 @@ const AddStopDialog = ({ open, onClose, onSubmit }) => {
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose}>Huy</Button>
+        <Button onClick={onClose}>Hủy</Button>
         <Button variant="contained" onClick={handleSave}>
-          Luu diem dung
+          Lưu điểm dừng
         </Button>
       </DialogActions>
     </Dialog>

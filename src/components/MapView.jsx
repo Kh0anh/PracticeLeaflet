@@ -1,4 +1,4 @@
-import { Box, Button, Chip, IconButton, Stack, Typography } from '@mui/material';
+import { Box, Button, IconButton, Stack, Typography } from '@mui/material';
 import {
   MapContainer,
   Marker,
@@ -11,21 +11,16 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import RoomIcon from '@mui/icons-material/Room';
 import CloseIcon from '@mui/icons-material/Close';
 import availableStopPng from '../assets/available-stop-marker.png';
 import routeEndPng from '../assets/route-end-marker.png';
 import routeStartPng from '../assets/route-start-marker.png';
 import routeStopPng from '../assets/route-stop-marker.png';
-import {
-  formatDistance,
-  formatDuration,
-  haversineDistance,
-} from '../utils/routeUtils.js';
+import { formatDistance, haversineDistance } from '../utils/routeUtils.js';
 
 const markerSize = {
-  iconSize: [44, 64],
-  iconAnchor: [22, 64],
+  iconSize: [42, 42],
+  iconAnchor: [22, 42],
   popupAnchor: [0, -56],
 };
 
@@ -217,17 +212,17 @@ const MapView = ({
             markerIcon = routeMarkerIcon;
           }
 
-          let actionLabel = 'Them vao lo trinh';
+          let actionLabel = 'Thêm vào lộ trình';
           let actionDisabled = false;
 
           if (isStartStop) {
-            actionLabel = 'Dang la diem bat dau';
+            actionLabel = 'Đang là điểm bắt đầu';
             actionDisabled = true;
           } else if (isEndStop) {
-            actionLabel = 'Dang la diem ket thuc';
+            actionLabel = 'Đang là điểm kết thúc';
             actionDisabled = true;
           } else if (isStopInRoute) {
-            actionLabel = 'Da nam trong lo trinh';
+            actionLabel = 'Đã nằm trong lộ trình';
             actionDisabled = true;
           }
 
@@ -298,15 +293,40 @@ const MapView = ({
         <Box
           sx={{
             position: 'absolute',
-            transform: 'translate(-50%, -110%)',
+            transform: 'translate(16px, -100%)',
             backgroundColor: 'background.paper',
+            overflow: 'visible',
             borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'divider',
             boxShadow: 4,
             p: 2,
             minWidth: 280,
             maxWidth: 320,
             zIndex: (theme) => (theme?.zIndex?.modal ?? 1300) + 1,
             pointerEvents: 'auto',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              left: -16,
+              bottom: 0,
+              width: 0,
+              height: 0,
+              borderTop: '12px solid transparent',
+              borderBottom: '12px solid transparent',
+              borderRight: (theme) => `16px solid ${theme.palette.divider}`,
+            },
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              left: -14,
+              bottom: 2,
+              width: 0,
+              height: 0,
+              borderTop: '10px solid transparent',
+              borderBottom: '10px solid transparent',
+              borderRight: (theme) => `14px solid ${theme.palette.background.paper}`,
+            },
           }}
           style={{
             top: mapContextInfo.position.y,
@@ -316,7 +336,7 @@ const MapView = ({
           <Stack spacing={1.5}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Typography variant="subtitle2" fontWeight={700}>
-                Diem vua chon
+                Điểm vừa chọn
               </Typography>
               <IconButton size="small" onClick={handleCloseContext}>
                 <CloseIcon fontSize="small" />
@@ -332,7 +352,7 @@ const MapView = ({
               onClick={handleNearestRoute}
               disabled={!mapContextInfo.nearest || !onBuildNearestRoute}
             >
-              Tim cua hang co duong di ngan nhat
+              Tìm cửa hàng gần đây
             </Button>
             {mapContextInfo.showNearest && mapContextInfo.nearest && (
               <Box
@@ -348,7 +368,7 @@ const MapView = ({
                   {mapContextInfo.nearest.stop.name}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Khoang cach: {formatDistance(mapContextInfo.nearest.distanceKm)}
+                  Khoảng cách: {formatDistance(mapContextInfo.nearest.distanceKm)}
                 </Typography>
               </Box>
             )}
@@ -359,7 +379,7 @@ const MapView = ({
               onClick={handleQuickAddStop}
               disabled={!onAddCoordinateStop}
             >
-              Them diem vao diem dung
+              Thêm điểm vào điểm dừng
             </Button>
 
             <Button
@@ -369,80 +389,12 @@ const MapView = ({
               onClick={handleCreateStore}
               disabled={!onCreateStoreAtPoint}
             >
-              Them cua hang tai diem nay
+              Thêm cửa hàng tại điểm này
             </Button>
           </Stack>
         </Box>
       )}
 
-      <Box
-        sx={{
-          position: 'absolute',
-          top: 16,
-          left: 16,
-          backgroundColor: 'rgba(255,255,255,0.95)',
-          borderRadius: 2,
-          boxShadow: 3,
-          p: 2,
-          minWidth: 240,
-        }}
-      >
-        <Stack spacing={1}>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <RoomIcon color="primary" />
-            <Typography variant="subtitle1" fontWeight={700}>
-              Lo trinh hien tai
-            </Typography>
-          </Stack>
-
-          {routeStatus === 'loading' ? (
-            <Typography variant="body2" color="text.secondary">
-              Dang truy van tu OSRM, vui long doi...
-            </Typography>
-          ) : routeStops.length < 2 ? (
-            <Typography variant="body2" color="text.secondary">
-              Chon toi thieu hai diem de xay dung lo trinh.
-            </Typography>
-          ) : (
-            segments.map((segment) => (
-              <Stack
-                key={segment.id}
-                spacing={0.5}
-                sx={{
-                  borderRadius: 1,
-                  px: 1,
-                  py: 0.75,
-                  backgroundColor: 'rgba(25, 118, 210, 0.06)',
-                }}
-              >
-                <Typography variant="body2" fontWeight={600}>
-                  {`${segment.from.name} -> ${segment.to.name}`}
-                </Typography>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Chip
-                    size="small"
-                    label={formatDuration(segment.durationMinutes)}
-                    sx={{
-                      backgroundColor: segment.color,
-                      color: 'white',
-                      fontWeight: 600,
-                    }}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    {formatDistance(segment.distanceKm)}
-                  </Typography>
-                </Stack>
-              </Stack>
-            ))
-          )}
-
-          {routeError && (
-            <Typography variant="caption" color="error">
-              {routeError}
-            </Typography>
-          )}
-        </Stack>
-      </Box>
     </Box>
   );
 };

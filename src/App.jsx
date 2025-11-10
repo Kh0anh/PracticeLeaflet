@@ -113,14 +113,14 @@ function App() {
     fetch(url, { signal: controller.signal })
       .then((res) => {
         if (!res.ok) {
-          throw new Error(`OSRM tra ve loi ${res.status}`);
+          throw new Error(`OSRM trả về lỗi ${res.status}`);
         }
         return res.json();
       })
       .then((data) => {
         const route = data.routes?.[0];
         if (!route) {
-          throw new Error('Khong tim thay lo trinh phu hop');
+          throw new Error('Không tìm thấy lộ trình phù hợp');
         }
         setRouteDetails({
           status: 'success',
@@ -139,7 +139,7 @@ function App() {
           legs: [],
           distanceKm: 0,
           durationMinutes: 0,
-          error: error.message ?? 'Khong the ket noi dich vu chi duong',
+          error: error.message ?? 'Không thể kết nối dịch vụ chỉ đường',
         });
       });
 
@@ -189,7 +189,7 @@ function App() {
   const handleAddStop = (stopId) => {
     if (!stopId || routeStopIds.includes(stopId)) return;
     setRouteStopIds((prev) => [...prev, stopId]);
-    setSnackbar({ message: 'Da them diem dung vao lo trinh', severity: 'success' });
+    setSnackbar({ message: 'Đã thêm điểm dừng vào lộ trình', severity: 'success' });
   };
 
   const handleRemoveStop = (stopId) => {
@@ -210,7 +210,7 @@ function App() {
     if (!routeStopIds.length) return;
     setRouteStopIds([]);
     setSnackbar({
-      message: 'Da xoa tat ca diem dung',
+      message: 'Đã xóa tất cả điểm dừng',
       severity: 'info',
     });
   };
@@ -252,14 +252,14 @@ function App() {
 
     createCustomStop(
       {
-        name: `Diem tam thoi (${formatPositionLabel(position)})`,
-        description: 'Duoc tao tu ban do',
+        name: `Điểm tạm thời (${formatPositionLabel(position)})`,
+        description: 'Được tạo từ bản đồ',
         position,
       },
       { addToRoute: true, ephemeral: true },
     );
     setSnackbar({
-      message: 'Da them diem tam thoi vao lo trinh',
+      message: 'Đã thêm điểm tạm thời vào lộ trình',
       severity: 'success',
     });
   };
@@ -269,14 +269,14 @@ function App() {
 
     createCustomStop(
       {
-        name: `Cua hang moi (${formatPositionLabel(position)})`,
-        description: 'Duoc them tu ban do',
+        name: `Cửa hàng mới (${formatPositionLabel(position)})`,
+        description: 'Được thêm từ bản đồ',
         position,
       },
       { addToRoute: false },
     );
     setSnackbar({
-      message: 'Da them cua hang moi vao danh sach',
+      message: 'Đã thêm cửa hàng mới vào danh sách',
       severity: 'success',
     });
   };
@@ -288,8 +288,8 @@ function App() {
 
     const newStop = createCustomStop(
       {
-        name: `Diem chon (${formatPositionLabel(position)})`,
-        description: 'Tao tu chuc nang tim cua hang gan nhat',
+        name: `Điểm chọn (${formatPositionLabel(position)})`,
+        description: 'Tạo từ chức năng tìm cửa hàng gần nhất',
         position,
       },
       { addToRoute: false, ephemeral: true },
@@ -297,7 +297,7 @@ function App() {
 
     setRouteStopIds([newStop.id, stopId]);
     setSnackbar({
-      message: `Da tao lo trinh toi ${targetStop.name}`,
+      message: `Đã tạo lộ trình tới ${targetStop.name}`,
       severity: 'info',
     });
   };
