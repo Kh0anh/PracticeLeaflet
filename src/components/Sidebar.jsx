@@ -15,6 +15,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import { createFilterOptions } from '@mui/material/Autocomplete';
 import AddIcon from '@mui/icons-material/Add';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
@@ -104,6 +105,28 @@ const StopListItem = ({
     />
   </ListItem>
 );
+
+const formatCoordinateLabel = (position) => {
+  if (
+    !Array.isArray(position) ||
+    position.length !== 2 ||
+    !position.every((value) => typeof value === 'number' && Number.isFinite(value))
+  ) {
+    return '';
+  }
+  const [lat, lon] = position;
+  return `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+};
+
+const buildSearchValue = ({ label, description, coordinateLabel }) => {
+  const tokens = [label, description];
+  if (coordinateLabel) {
+    const compact = coordinateLabel.replace(/\s+/g, '');
+    const spaced = coordinateLabel.replace(', ', ' ');
+    tokens.push(coordinateLabel, spaced, compact);
+  }
+  return tokens.filter(Boolean).join(' ');
+};
 
 const modifierIconMap = {
   left: TurnLeftIcon,
@@ -243,12 +266,31 @@ const Sidebar = ({
 
   const availableOptions = useMemo(
     () =>
-      availableStops.map((stop) => ({
-        label: stop.name,
-        id: stop.id,
-        description: stop.description,
-      })),
+      availableStops.map((stop) => {
+        const coordinateLabel = formatCoordinateLabel(stop.position);
+        return {
+          label: stop.name,
+          id: stop.id,
+          description: stop.description,
+          coordinateLabel,
+          searchValue: buildSearchValue({
+            label: stop.name,
+            description: stop.description,
+            coordinateLabel,
+          }),
+        };
+      }),
     [availableStops],
+  );
+
+  const filterOptions = useMemo(
+    () =>
+      createFilterOptions({
+        stringify: (option) =>
+          option?.searchValue ?? option?.label ?? option ?? '',
+        trim: true,
+      }),
+    [],
   );
 
   const handleSelect = (_event, option) => {
@@ -316,15 +358,32 @@ const Sidebar = ({
           <Stack direction="row" spacing={1}>
             <Autocomplete
               options={availableOptions}
+              filterOptions={filterOptions}
               value={selectedStop}
               onChange={handleSelect}
+              getOptionLabel={(option) => option?.label ?? ''}
+              renderOption={(props, option) => {
+                const secondary = option.coordinateLabel
+                  ? option.description
+                    ? `${option.description} - ${option.coordinateLabel}`
+                    : option.coordinateLabel
+                  : option.description ?? '';
+                return (
+                  <li {...props}>
+                    <ListItemText
+                      primary={option.label}
+                      secondary={secondary}
+                    />
+                  </li>
+                );
+              }}
               sx={{ flex: 1 }}
               renderInput={(params) => (
                 <TextField
                   {...params}
                   size="small"
                   label="Thêm điểm dừng"
-                  placeholder="Chọn điểm có sẵn"
+                  placeholder="Tìm theo tên hoặc tọa độ"
                 />
               )}
             />
